@@ -5,6 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "echo-copy"
+path = "src/bin/echo-copy.rs"
+
+[[bin]]
+name = "echo"
+path = "src/bin/echo.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 mini-redis = "0.4"

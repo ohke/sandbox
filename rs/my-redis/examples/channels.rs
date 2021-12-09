@@ -14,7 +14,7 @@ enum Command {
         key: String,
         val: Bytes,
         resp: Responder<()>,
-    }
+    },
 }
 
 #[tokio::main]
