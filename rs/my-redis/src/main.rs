@@ -1,3 +1,6 @@
+mod connection;
+mod frame;
+
 use bytes::Bytes;
 use mini_redis::{Connection, Frame};
 use std::collections::HashMap;
