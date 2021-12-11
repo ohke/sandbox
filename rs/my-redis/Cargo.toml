@@ -17,6 +17,10 @@ path = "src/bin/echo.rs"
 name = "mini-tokio"
 path = "src/bin/mini-tokio.rs"
 
+[[bin]]
+name = "my-select"
+path = "src/bin/my-select.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 mini-redis = "0.4"
