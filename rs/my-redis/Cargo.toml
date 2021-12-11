@@ -13,7 +13,13 @@ path = "src/bin/echo-copy.rs"
 name = "echo"
 path = "src/bin/echo.rs"
 
+[[bin]]
+name = "mini-tokio"
+path = "src/bin/mini-tokio.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 mini-redis = "0.4"
 bytes = "1"
+futures = "0.3"
+crossbeam = "0.8"
