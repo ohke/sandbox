@@ -21,5 +21,9 @@
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "actions": {
+    "default_popup": "index.html",
+    "default_title": "Open the popup"
+  }
 }
