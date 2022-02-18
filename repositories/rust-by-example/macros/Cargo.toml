@@ -1,0 +1,36 @@
+[package]
+name = "macros"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "say_hello"
+path = "src/say_hello.rs"
+
+[[bin]]
+name = "designators"
+path = "src/designators.rs"
+
+[[bin]]
+name = "overload"
+path = "src/overload.rs"
+
+[[bin]]
+name = "repeat"
+path = "src/repeat.rs"
+
+[[bin]]
+name = "dry"
+path = "src/dry.rs"
+
+[[bin]]
+name = "dsl"
+path = "src/dsl.rs"
+
+[[bin]]
+name = "variadics"
+path = "src/variadics.rs"
+
+[dependencies]
