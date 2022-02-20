@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+  dev:
+    build:
+      dockerfile: docker/Dockerfile
+      context: .
+      args:
+        USERNAME: docker
+        UID: 1000
+        GROUPNAME: docker-users
+        GID: 1000
+    volumes:
+      - .:/home/docker
+    privileged: true
