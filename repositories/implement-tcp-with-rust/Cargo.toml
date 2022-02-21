@@ -1,5 +1,18 @@
-[workspace]
+[package]
+name = "toytcp"
+version = "0.1.0"
+edition = "2021"
 
-members = [
-    "echoserver",
-]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "echoserver"
+path = "bin/echoserver.rs"
+
+[dependencies]
+pnet = "0.27"
+anyhow = "1.0"
+rand = "0.8"
+
+[dev-dependencies]
+ctrlc = "3.1"
