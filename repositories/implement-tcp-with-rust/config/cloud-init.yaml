@@ -2,8 +2,14 @@
 package_update: true
 packages:
   - build-essential
+  - cargo
   - ethtool
   - iproute2
   - iptables
   - iputils-ping
   - sudo
+write_files:
+  - path: "/etc/environment"
+    append: true
+    content: |
+      CARGO_TARGET_DIR="/home/ubuntu/target"
