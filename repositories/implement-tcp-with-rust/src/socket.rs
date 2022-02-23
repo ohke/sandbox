@@ -50,6 +50,7 @@ impl Socket {
         let mut tcp_packet = TCPPacket::new(payload.len());
         tcp_packet.set_src(self.local_port);
         tcp_packet.set_dest(self.remote_port);
+        tcp_packet.set_offset(5);
         tcp_packet.set_flag(flag);
         let sent_size = self
             .sender

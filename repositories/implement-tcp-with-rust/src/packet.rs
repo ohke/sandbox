@@ -40,6 +40,10 @@ impl TCPPacket {
         self.buffer[2..4].copy_from_slice(&port.to_be_bytes());
     }
 
+    pub fn set_offset(&mut self, offset: u8) {
+        self.buffer[12] |= offset << 4;
+    }
+
     pub fn set_flag(&mut self, flag: u8) {
         // コントロールフラグは厳密には6ビットだが、使われていない予約領域の後ろ2ビットも含めて1バイトとしている
         self.buffer[13] = flag;
