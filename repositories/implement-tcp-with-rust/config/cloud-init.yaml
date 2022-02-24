@@ -13,3 +13,5 @@ write_files:
     append: true
     content: |
       CARGO_TARGET_DIR="/home/ubuntu/target"
+runcmd:
+  - rustup component add rustfmt

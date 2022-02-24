@@ -2,26 +2,32 @@ use crate::tcpflags;
 use pnet::packet::{ip::IpNextHeaderProtocols, tcp::TcpPacket, Packet};
 use pnet::util;
 
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Formatter};
 use std::net::Ipv4Addr;
 const TCP_HEADER_SIZE: usize = 20;
 
 #[derive(Clone)]
 pub struct TCPPacket {
     // ※ ビッグエンディアン
-    // 20 byte: Header
-    //   2 byte: 送信元ポート番号
-    //   2 byte: 宛先ポート番号
-    //   4 byte: シーケンス番号
-    //   4 byte: 確認応答番号
-    //   4 bit: データオフセット
-    //   6 bit: (予約)
-    //   6 bit: コントロールフラグ
-    //   2 byte: ウィンドウサイズ
-    //   2 byte: チェックサム
-    //   2 byte: 緊急ポインタ
-    //   4 byte: オプション + パディング
-    // 0~ byte: Payload
+    // 0                   1                   2                   3
+    // 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |          Source Port          |       Destination Port        |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                        Sequence Number                        |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                    Acknowledgment Number                      |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |  Data |           |U|A|P|R|S|F|                               |
+    // | Offset| Reserved  |R|C|S|S|Y|I|            Window             |
+    // |       |           |G|K|H|T|N|N|                               |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |           Checksum            |         Urgent Pointer        |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                    Options                    |    Padding    |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                             data                              |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     buffer: Vec<u8>,
 }
 
@@ -32,6 +38,45 @@ impl TCPPacket {
         }
     }
 
+    pub fn get_src(&self) -> u16 {
+        u16::from_be_bytes([self.buffer[0], self.buffer[1]])
+    }
+
+    pub fn get_dest(&self) -> u16 {
+        u16::from_be_bytes([self.buffer[2], self.buffer[3]])
+    }
+
+    pub fn get_seq(&self) -> u32 {
+        u32::from_be_bytes([
+            self.buffer[4],
+            self.buffer[5],
+            self.buffer[6],
+            self.buffer[7],
+        ])
+    }
+
+    pub fn get_ack(&self) -> u32 {
+        u32::from_be_bytes([
+            self.buffer[8],
+            self.buffer[9],
+            self.buffer[10],
+            self.buffer[11],
+        ])
+    }
+
+    pub fn get_flag(&self) -> u8 {
+        // オプション領域は使用しない (all zero)
+        self.buffer[13]
+    }
+
+    pub fn get_window(&self) -> u16 {
+        u16::from_be_bytes([self.buffer[14], self.buffer[15]])
+    }
+
+    pub fn get_checksum(&self) -> u16 {
+        u16::from_be_bytes([self.buffer[16], self.buffer[17]])
+    }
+
     pub fn set_src(&mut self, port: u16) {
         self.buffer[0..2].copy_from_slice(&port.to_be_bytes());
     }
@@ -40,13 +85,46 @@ impl TCPPacket {
         self.buffer[2..4].copy_from_slice(&port.to_be_bytes());
     }
 
-    pub fn set_offset(&mut self, offset: u8) {
+    pub fn set_seq(&mut self, seq: u32) {
+        self.buffer[4..8].copy_from_slice(&seq.to_be_bytes());
+    }
+
+    pub fn set_ack(&mut self, ack: u32) {
+        self.buffer[8..12].copy_from_slice(&ack.to_be_bytes());
+    }
+
+    pub fn set_data_offset(&mut self, offset: u8) {
         self.buffer[12] |= offset << 4;
     }
 
     pub fn set_flag(&mut self, flag: u8) {
         // コントロールフラグは厳密には6ビットだが、使われていない予約領域の後ろ2ビットも含めて1バイトとしている
         self.buffer[13] = flag;
+    }
+
+    pub fn set_window_size(&mut self, window_size: u16) {
+        self.buffer[14..16].copy_from_slice(&window_size.to_be_bytes());
+    }
+
+    pub fn set_checksum(&mut self, checksum: u16) {
+        self.buffer[16..18].copy_from_slice(&checksum.to_be_bytes());
+    }
+
+    pub fn set_payload(&mut self, payload: &[u8]) {
+        self.buffer[TCP_HEADER_SIZE..TCP_HEADER_SIZE + payload.len() as usize]
+            .copy_from_slice(payload);
+    }
+
+    pub fn is_correct_checksum(&self, local_addr: Ipv4Addr, remote_addr: Ipv4Addr) -> bool {
+        self.get_checksum()
+            == util::ipv4_checksum(
+                &self.packet(),
+                8,
+                &[],
+                &local_addr,
+                &remote_addr,
+                IpNextHeaderProtocols::Tcp,
+            )
     }
 }
 
@@ -56,5 +134,30 @@ impl Packet for TCPPacket {
     }
     fn payload(&self) -> &[u8] {
         &self.buffer[TCP_HEADER_SIZE..]
+    }
+}
+
+impl<'a> From<TcpPacket<'a>> for TCPPacket {
+    fn from(packet: TcpPacket<'a>) -> Self {
+        Self {
+            buffer: packet.packet().to_vec(),
+        }
+    }
+}
+
+impl Debug for TCPPacket {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            r"
+        src: {}
+        dst: {}
+        flag: {}
+        payload_len: {}",
+            self.get_src(),
+            self.get_dest(),
+            tcpflags::flag_to_string(self.get_flag()),
+            self.payload().len()
+        )
     }
 }
