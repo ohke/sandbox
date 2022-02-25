@@ -21,7 +21,7 @@ const PORT_RANGE: Range<u16> = 40000..60000;
 
 pub struct TCP {
     // 3スレッドでRead/Write
-    sockets: RwLock<HashMap<SockID, SockID>>,
+    sockets: RwLock<HashMap<SockID, Socket>>,
     // イベントまで待機するため
     event_condvar: (Mutex<Option<TCPEvent>>, Condvar),
 }
@@ -55,6 +55,110 @@ impl TCP {
         anyhow::bail!("no available port found.")
     }
 
+    fn receive_handler(&self) -> Result<()> {
+        dbg!("begin recv thread.");
+
+        // IP層のチャネルを作成
+        let (_, mut receiver) = transport::transport_channel(
+            65535,
+            TransportChannelType::Layer3(IpNextHeaderProtocols::Tcp),
+        )
+        .unwrap();
+
+        // パケットを待ち受ける
+        let mut packet_iter = transport::ipv4_packet_iter(&mut receiver);
+        loop {
+            let (packet, remote_addr) = match packet_iter.next() {
+                Ok((p, r)) => (p, r),
+                Err(_) => continue,
+            };
+            let local_addr = packet.get_destination();
+            let tcp_packet = match TcpPacket::new(packet.payload()) {
+                Some(p) => p,
+                None => continue,
+            };
+            let packet = TCPPacket::from(tcp_packet);
+            let remote_addr = match remote_addr {
+                IpAddr::V4(addr) => addr,
+                _ => continue,
+            };
+            let mut table = self.sockets.write().unwrap();
+            let socket = match table.get_mut(&SockID(
+                local_addr,
+                remote_addr,
+                packet.get_dest(),
+                packet.get_src(),
+            )) {
+                Some(socket) => socket, // 接続済みソケット
+                None => match table.get_mut(&SockID(
+                    local_addr,
+                    UNDETERMINED_IP_ADDR,
+                    packet.get_dest(),
+                    UNDETERMINED_PORT,
+                )) {
+                    Some(socket) => socket, // リスニングソケット
+                    None => continue,       // 以上に該当しないものは無視
+                },
+            };
+
+            if !packet.is_correct_checksum(local_addr, remote_addr) {
+                dbg!("invalid checksum.");
+                continue;
+            }
+
+            let sock_id = socket.get_sock_id();
+            if let Err(error) = match socket.status {
+                TcpStatus::SynSent => self.synsent_handler(socket, &packet),
+                _ => {
+                    dbg!("not implemented state.");
+                    Ok(())
+                }
+            } {
+                dbg!(error);
+            }
+        }
+    }
+
+    fn synsent_handler(&self, socket: &mut Socket, packet: &TCPPacket) -> Result<()> {
+        // SYNSENT状態のソケットに到着したパケットのハンドラ
+        dbg!("synsent handler.");
+
+        if packet.get_flag() & tcpflags::ACK > 0 // コネクションを確立したセグメントはACKがセットされている
+            && packet.get_flag() & tcpflags::SYN > 0
+            // セグメントのack番号は unacked_seq <= ack < next に含まれる必要がある
+            && socket.send_param.unacked_seq <= packet.get_ack()
+            && packet.get_ack() <= socket.send_param.next
+        {
+            socket.recv_param.next = packet.get_seq();
+            socket.recv_param.initail_seq = packet.get_seq();
+            socket.send_param.unacked_seq = packet.get_ack();
+            socket.send_param.window = packet.get_window();
+
+            if socket.send_param.unacked_seq > socket.send_param.initial_seq {
+                socket.status = TcpStatus::Established;
+                socket.send_tcp_packet(
+                    socket.send_param.next,
+                    socket.recv_param.next,
+                    tcpflags::ACK,
+                    &[],
+                )?;
+                dbg!("status: synsent -> ", &socket.status);
+                self.publish_event(socket.get_sock_id(), TCPEventKind::ConnectionCompleted);
+            } else {
+                socket.status = TcpStatus::SynRcvd;
+                socket.send_tcp_packet(
+                    socket.send_param.next,
+                    socket.recv_param.next,
+                    tcpflags::ACK,
+                    &[],
+                )?;
+                dbg!("status: synsent -> ", &socket.status);
+            }
+        }
+
+        Ok(())
+    }
+
     // スリーウェイハンドシェイク
     //   1. クライアント --- SYN (シーケンス番号: i) --> サーバ
     //   2. サーバ --- SYN + ACK (シーケンス番号: i, ACK番号: j=i+1) --> クライアント
@@ -81,12 +185,74 @@ impl TCP {
         table.insert(sock_id, socket);
 
         drop(table); // ロック解除
-        self.wait_event(sock_id, TCPEventKind::ConnetionCompleted);
+        self.wait_event(sock_id, TCPEventKind::ConnectionCompleted);
 
         Ok(sock_id)
+    }
+
+    fn wait_event(&self, sock_id: SockID, kind: TCPEventKind) {
+        // 指定したソケットIDと種別のイベントを待機
+        let (lock, cvar) = &self.event_condvar;
+        let mut event = lock.lock().unwrap();
+        loop {
+            if let Some(ref e) = *event {
+                if e.sock_id == sock_id && e.kind == kind {
+                    break;
+                }
+            }
+            event = cvar.wait(event).unwrap();
+        }
+        dbg!(&event);
+        *event = None;
+    }
+
+    fn publish_event(&self, sock_id: SockID, kind: TCPEventKind) {
+        // 指定のソケットIDにイベントを発行する
+        let (lock, cvar) = &self.event_condvar;
+        let mut e = lock.lock().unwrap();
+        *e = Some(TCPEvent::new(sock_id, kind));
+        cvar.notify_all();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TCPEvent {
+    sock_id: SockID,
+    kind: TCPEventKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TCPEventKind {
+    ConnectionCompleted,
+    Acked,
+    DataArrived,
+    ConnectionClosed,
+}
+
+impl TCPEvent {
+    fn new(sock_id: SockID, kind: TCPEventKind) -> Self {
+        Self { sock_id, kind }
     }
 }
 
 fn get_source_addr_to(addr: Ipv4Addr) -> Result<Ipv4Addr> {
-    Ok("10.0.0.1".parse().unwrap())
+    // 宛先IPアドレスに対する送信元インタフェースのIPアドレスを取得する
+    // ex. 10.0.0.1 via 192.168.64.1 dev enp0s2 src 192.168.64.2 uid 0
+    //     -> 192.168.64.2
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(format!("ip route get {} | grep src", addr))
+        .output()?;
+    dbg!(&output);
+    let mut output = str::from_utf8(&output.stdout)?
+        .trim()
+        .split_ascii_whitespace();
+    while let Some(s) = output.next() {
+        if s == "src" {
+            break;
+        }
+    }
+    let ip = output.next().context("failed to get src ip.")?;
+    dbg!("source addr: ", ip);
+    ip.parse().context("failed to parse source ip.")
 }

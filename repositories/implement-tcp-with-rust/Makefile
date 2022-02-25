@@ -21,8 +21,11 @@ check:
 	sudo ip netns exec host1 ping -c 3 10.0.1.1
 	sudo ip netns exec host2 ping -c 3 10.0.0.1
 
-tcpdump:
+tcpdumphost1:
 	sudo ip netns exec host1 tcpdump -l
+
+tcpdumphost2:
+	sudo ip netns exec host2 tcpdump -l
 
 uphost2:
 	sudo ip netns exec host2 nc -l 10.0.1.1 40000
