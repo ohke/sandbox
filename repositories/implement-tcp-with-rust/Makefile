@@ -1,4 +1,5 @@
 vm = ubuntu
+host =
 
 launch:
 	multipass launch --name ${vm} --cloud-init ./config/cloud-init.yaml 18.04
@@ -21,11 +22,11 @@ check:
 	sudo ip netns exec host1 ping -c 3 10.0.1.1
 	sudo ip netns exec host2 ping -c 3 10.0.0.1
 
-tcpdumphost1:
-	sudo ip netns exec host1 tcpdump -l
+tcpdump:
+	sudo ip netns exec host${host} tcpdump -l
 
-tcpdumphost2:
-	sudo ip netns exec host2 tcpdump -l
+nc:
+	sudo ip netns exec host${host} nc 10.0.0.1 40000
 
-uphost2:
-	sudo ip netns exec host2 nc -l 10.0.1.1 40000
+echoserver:
+	sudo ip netns exec host${host} ../target/debug/examples/echoserver 10.0.0.1 40000

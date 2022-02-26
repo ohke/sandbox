@@ -24,6 +24,8 @@ pub struct Socket {
     pub recv_param: RecvParam,
     pub status: TcpStatus,
     pub sender: TransportSender,
+    pub connected_connection_queue: VecDeque<SockID>, // 接続済みソケットを保持。リスニングソケットのみアクセス。
+    pub listening_socket: Option<SockID>, // 生成元のリスニングソケット。接続済みソケットのみアクセス。
 }
 
 #[derive(Clone, Debug)]
@@ -38,7 +40,7 @@ pub struct SendParam {
 pub struct RecvParam {
     pub next: u32,        // 次に受信するseq
     pub window: u16,      // 受信ウィンドウサイズ
-    pub initail_seq: u32, // 初期送信seq
+    pub initial_seq: u32, // 初期送信seq
     pub tail: u32,        // ack送信済みのseqの末尾
 }
 
@@ -98,11 +100,13 @@ impl Socket {
             recv_param: RecvParam {
                 next: 0,
                 window: SOCKET_BUFFER_SIZE as u16,
-                initail_seq: 0,
+                initial_seq: 0,
                 tail: 0,
             },
             status,
             sender,
+            connected_connection_queue: VecDeque::new(),
+            listening_socket: None,
         })
     }
 
@@ -117,7 +121,7 @@ impl Socket {
         tcp_packet.set_src(self.local_port);
         tcp_packet.set_dest(self.remote_port);
         tcp_packet.set_seq(seq);
-        tcp_packet.set_ack(seq);
+        tcp_packet.set_ack(ack);
         tcp_packet.set_data_offset(5);
         tcp_packet.set_flag(flag);
         tcp_packet.set_window_size(self.recv_param.window);
