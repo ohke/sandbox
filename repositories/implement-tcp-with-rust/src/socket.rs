@@ -24,6 +24,7 @@ pub struct Socket {
     pub recv_param: RecvParam,
     pub status: TcpStatus,
     pub sender: TransportSender,
+    pub retransmission_queue: VecDeque<RetransmissionQueueEntry>, // 再送用のキュー
     pub connected_connection_queue: VecDeque<SockID>, // 接続済みソケットを保持。リスニングソケットのみアクセス。
     pub listening_socket: Option<SockID>, // 生成元のリスニングソケット。接続済みソケットのみアクセス。
 }
@@ -105,6 +106,7 @@ impl Socket {
             },
             status,
             sender,
+            retransmission_queue: VecDeque::new(),
             connected_connection_queue: VecDeque::new(),
             listening_socket: None,
         })
@@ -138,6 +140,16 @@ impl Socket {
             .sender
             .send_to(tcp_packet.clone(), IpAddr::V4(self.remote_addr))
             .context(format!("failed to send: \n{:?}", tcp_packet))?;
+        dbg!("sent", &tcp_packet);
+
+        // 空のACKは再送不要
+        if payload.is_empty() && tcp_packet.get_flag() == tcpflags::ACK {
+            return Ok(sent_size);
+        }
+
+        self.retransmission_queue
+            .push_back(RetransmissionQueueEntry::new(tcp_packet));
+
         Ok(sent_size)
     }
 
@@ -176,5 +188,21 @@ impl Display for Socket {
             self.connected_connection_queue,
             self.listening_socket,
         )
+    }
+}
+
+pub struct RetransmissionQueueEntry {
+    pub packet: TCPPacket,
+    pub latest_transmission_time: SystemTime,
+    pub transmission_count: u8,
+}
+
+impl RetransmissionQueueEntry {
+    fn new(packet: TCPPacket) -> Self {
+        Self {
+            packet,
+            latest_transmission_time: SystemTime::now(),
+            transmission_count: 1,
+        }
     }
 }

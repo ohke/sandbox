@@ -40,7 +40,60 @@ impl TCP {
             cloned_tcp.receive_handler().unwrap();
         });
 
+        let cloned_tcp = tcp.clone();
+        std::thread::spawn(move || {
+            // 再送用のタイマースレッド
+            cloned_tcp.timer();
+        });
+
         tcp
+    }
+
+    fn timer(&self) {
+        dbg!("begin timer thread");
+
+        loop {
+            let mut table = self.sockets.write().unwrap();
+            for (_, socket) in table.iter_mut() {
+                while let Some(mut item) = socket.retransmission_queue.pop_front() {
+                    // 再送キューからackされたセグメントを削除
+                    if socket.send_param.unacked_seq > item.packet.get_seq() {
+                        dbg!("successfully acked", item.packet.get_seq());
+                        continue;
+                    }
+
+                    // タイムアウトを確認
+                    if item.latest_transmission_time.elapsed().unwrap()
+                        < Duration::from_secs(RETRANSMITTION_TIMEOUT)
+                    {
+                        // タイムアウトしてなければ、キューの以降のエントリもタイムアウトしてない
+                        socket.retransmission_queue.push_front(item);
+                        break;
+                    }
+
+                    // ackされてなければ再送
+                    if item.transmission_count < MAX_TRANSMITTION {
+                        dbg!("retransmit");
+
+                        socket
+                            .sender
+                            .send_to(item.packet.clone(), IpAddr::V4((socket.remote_addr)))
+                            .context("failed to retransmit")
+                            .unwrap();
+                        item.transmission_count += 1;
+                        item.latest_transmission_time = SystemTime::now();
+                        socket.retransmission_queue.push_back(item);
+                        break;
+                    } else {
+                        dbg!("reached MAX_TRANSMISSION");
+                    }
+                }
+            }
+
+            // 待機
+            drop(table);
+            thread::sleep(Duration::from_millis(100)); // TODO: 本来は固定値ではない
+        }
     }
 
     fn select_unused_port(&self, rng: &mut ThreadRng) -> Result<u16> {
@@ -111,6 +164,7 @@ impl TCP {
                 TcpStatus::Listen => self.listen_handler(table, sock_id, &packet, remote_addr),
                 TcpStatus::SynRcvd => self.synrcvd_handler(table, sock_id, &packet),
                 TcpStatus::SynSent => self.synsent_handler(socket, &packet),
+                TcpStatus::Established => self.established_handler(socket, &packet),
                 _ => {
                     dbg!("not implemented state.");
                     Ok(())
@@ -240,6 +294,43 @@ impl TCP {
         }
 
         Ok(())
+    }
+
+    fn established_handler(&self, socket: &mut Socket, packet: &TCPPacket) -> Result<()> {
+        dbg!("established handler");
+
+        if socket.send_param.unacked_seq < packet.get_ack()
+            && packet.get_ack() <= socket.send_param.next
+        {
+            // 送信済みセグメントを削除
+            socket.send_param.unacked_seq = packet.get_ack();
+            self.delete_acked_segment_from_retransmission_queue(socket);
+        } else if socket.send_param.next < packet.get_ack() {
+            // 未送信セグメントに対するackは破棄
+            return Ok(());
+        }
+
+        if packet.get_flag() & tcpflags::ACK == 0 {
+            // ACKが立ってないパケットは破棄
+            return Ok(());
+        }
+
+        Ok(())
+    }
+
+    fn delete_acked_segment_from_retransmission_queue(&self, socket: &mut Socket) {
+        dbg!("ack accept", socket.send_param.unacked_seq);
+
+        while let Some(item) = socket.retransmission_queue.pop_front() {
+            if socket.send_param.unacked_seq > item.packet.get_seq() {
+                dbg!("successfully acked", item.packet.get_seq());
+                self.publish_event(socket.get_sock_id(), TCPEventKind::Acked);
+            } else {
+                // ackされていないので戻す
+                socket.retransmission_queue.push_front(item);
+                break;
+            }
+        }
     }
 
     // スリーウェイハンドシェイク
