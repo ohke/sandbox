@@ -54,11 +54,13 @@ impl TCP {
 
         loop {
             let mut table = self.sockets.write().unwrap();
-            for (_, socket) in table.iter_mut() {
+            for (sock_id, socket) in table.iter_mut() {
                 while let Some(mut item) = socket.retransmission_queue.pop_front() {
                     // 再送キューからackされたセグメントを削除
                     if socket.send_param.unacked_seq > item.packet.get_seq() {
                         dbg!("successfully acked", item.packet.get_seq());
+                        socket.send_param.window += item.packet.payload().len() as u16;
+                        self.publish_event(*sock_id, TCPEventKind::Acked);
                         continue;
                     }
 
@@ -324,6 +326,7 @@ impl TCP {
         while let Some(item) = socket.retransmission_queue.pop_front() {
             if socket.send_param.unacked_seq > item.packet.get_seq() {
                 dbg!("successfully acked", item.packet.get_seq());
+                socket.send_param.window += item.packet.payload().len() as u16;
                 self.publish_event(socket.get_sock_id(), TCPEventKind::Acked);
             } else {
                 // ackされていないので戻す
@@ -426,7 +429,30 @@ impl TCP {
             let mut socket = table
                 .get_mut(&sock_id)
                 .context(format!("no such socket: {:?}", sock_id))?;
-            let send_size = cmp::min(MSS, buffer.len() - cursor);
+
+            // 送信可能なサイズを計算
+            let mut send_size = cmp::min(
+                MSS,
+                cmp::min(socket.send_param.window as usize, buffer.len() - cursor),
+            );
+            while send_size == 0 {
+                dbg!("unable to slide send window");
+
+                // ウィンドウに空きがなければ、受信スレッドがロックできるようにして、イベント待機
+                drop(table);
+                self.wait_event(sock_id, TCPEventKind::Acked);
+                table = self.sockets.write().unwrap();
+                socket = table
+                    .get_mut(&sock_id)
+                    .context(format!("no such socket: {:?}", sock_id))?;
+                send_size = cmp::min(
+                    MSS,
+                    cmp::min(socket.send_param.window as usize, buffer.len() - cursor),
+                );
+            }
+            dbg!("current window size", socket.send_param.window);
+
+            // 送信
             socket.send_tcp_packet(
                 socket.send_param.next,
                 socket.recv_param.next,
@@ -435,6 +461,11 @@ impl TCP {
             )?;
             cursor += send_size;
             socket.send_param.next += send_size as u32;
+            socket.send_param.window -= send_size as u16;
+
+            // 一回ロックを外して待機することで、受信スレッドがACKを受信できるようにしている
+            drop(table);
+            thread::sleep(Duration::from_millis(1));
         }
         Ok(())
     }
