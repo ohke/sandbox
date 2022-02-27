@@ -23,10 +23,13 @@ check:
 	sudo ip netns exec host2 ping -c 3 10.0.0.1
 
 tcpdump:
-	sudo ip netns exec host${host} tcpdump -l
+	sudo ip netns exec host${host} tcpdump -l -S
 
 nc:
 	sudo ip netns exec host${host} nc 10.0.0.1 40000
 
 echoserver:
 	sudo ip netns exec host${host} ../target/debug/examples/echoserver 10.0.0.1 40000
+
+echoclient:
+	sudo ip netns exec host1 ../target/debug/examples/echoclient 10.0.1.1 40000

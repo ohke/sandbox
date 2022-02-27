@@ -138,7 +138,6 @@ impl Socket {
             .sender
             .send_to(tcp_packet.clone(), IpAddr::V4(self.remote_addr))
             .context(format!("failed to send: \n{:?}", tcp_packet))?;
-        dbg!("sent: ", &tcp_packet);
         Ok(sent_size)
     }
 
@@ -148,6 +147,34 @@ impl Socket {
             self.remote_addr,
             self.local_port,
             self.remote_port,
+        )
+    }
+}
+
+impl Display for Socket {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            r"
+        local_addr: {}
+        remote_addr: {}
+        local_port: {}
+        remote_port: {}
+        send_param: {:?}
+        recv_param: {:?}
+        status: {}
+        connected_connection_queue: {:?}
+        listening_socket: {:?}
+        ",
+            self.local_addr,
+            self.remote_addr,
+            self.local_port,
+            self.remote_port,
+            self.send_param,
+            self.recv_param,
+            self.status,
+            self.connected_connection_queue,
+            self.listening_socket,
         )
     }
 }

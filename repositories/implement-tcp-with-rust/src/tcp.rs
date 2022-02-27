@@ -138,34 +138,34 @@ impl TCP {
         let listening_socket = table.get_mut(&listening_socket_id).unwrap();
         if packet.get_flag() & tcpflags::SYN > 0 {
             // 接続中ソケットを生成して、初期化
-            let mut connected_socket = Socket::new(
+            let mut connecting_socket = Socket::new(
                 listening_socket.local_addr,
                 remote_addr,
                 listening_socket.local_port,
                 packet.get_src(),
                 TcpStatus::SynRcvd, // SYNRCVD状態に遷移させておく
             )?;
-            connected_socket.recv_param.next = packet.get_seq() + 1;
-            connected_socket.recv_param.initial_seq = packet.get_seq();
-            connected_socket.send_param.initial_seq = rand::thread_rng().gen_range(1..1 << 31);
-            connected_socket.send_param.next = packet.get_seq() + 1;
-            connected_socket.send_param.window = packet.get_window();
+            connecting_socket.recv_param.next = packet.get_seq() + 1;
+            connecting_socket.recv_param.initial_seq = packet.get_seq();
+            connecting_socket.send_param.initial_seq = rand::thread_rng().gen_range(1..1 << 31);
+            connecting_socket.send_param.next = packet.get_seq() + 1;
+            connecting_socket.send_param.window = packet.get_window();
 
             // 接続中ソケットから SYN|ACK を送信
-            connected_socket.send_tcp_packet(
-                connected_socket.send_param.initial_seq,
-                connected_socket.send_param.next,
+            connecting_socket.send_tcp_packet(
+                connecting_socket.send_param.initial_seq,
+                connecting_socket.send_param.next,
                 tcpflags::SYN | tcpflags::ACK,
                 &[],
             )?;
-            connected_socket.send_param.next = connected_socket.send_param.initial_seq + 1;
-            connected_socket.send_param.unacked_seq = connected_socket.send_param.initial_seq;
-            connected_socket.listening_socket = Some(listening_socket.get_sock_id()); // 生成元をセット
+            connecting_socket.send_param.next = connecting_socket.send_param.initial_seq + 1;
+            connecting_socket.send_param.unacked_seq = connecting_socket.send_param.initial_seq;
+            connecting_socket.listening_socket = Some(listening_socket.get_sock_id()); // 生成元をセット
 
-            dbg!("status: listen -> ", &connected_socket.status);
+            dbg!("status: listen -> ", &connecting_socket.status);
 
             // 接続中ソケットを登録
-            table.insert(connected_socket.get_sock_id(), connected_socket);
+            table.insert(connecting_socket.get_sock_id(), connecting_socket);
         }
 
         Ok(())
@@ -204,7 +204,7 @@ impl TCP {
 
     fn synsent_handler(&self, socket: &mut Socket, packet: &TCPPacket) -> Result<()> {
         // SYNSENT状態のソケットに到着したパケットのハンドラ
-        dbg!("synsent handler.");
+        dbg!("synsent handler.", &socket.listening_socket, &packet);
 
         if packet.get_flag() & tcpflags::ACK > 0 // コネクションを確立したセグメントはACKがセットされている
             && packet.get_flag() & tcpflags::SYN > 0
@@ -212,7 +212,7 @@ impl TCP {
             && socket.send_param.unacked_seq <= packet.get_ack()
             && packet.get_ack() <= socket.send_param.next
         {
-            socket.recv_param.next = packet.get_seq();
+            socket.recv_param.next = packet.get_seq() + 1;
             socket.recv_param.initial_seq = packet.get_seq();
             socket.send_param.unacked_seq = packet.get_ack();
             socket.send_param.window = packet.get_window();
@@ -257,17 +257,19 @@ impl TCP {
             TcpStatus::SynSent,
         )?;
 
-        // TCPシーケンス番号予測攻撃を防ぐためにランダムにする
-        socket.send_param.initial_seq = rng.gen_range(1..1 << 31);
+        // SYNパケットを送る
+        socket.send_param.initial_seq = rng.gen_range(1..1 << 31); // TCPシーケンス番号予測攻撃を防ぐため
         socket.send_tcp_packet(socket.send_param.initial_seq, 0, tcpflags::SYN, &[])?;
         socket.send_param.unacked_seq = socket.send_param.initial_seq;
         socket.send_param.next = socket.send_param.initial_seq + 1;
 
+        // 接続中ソケットを追加
         let mut table = self.sockets.write().unwrap();
         let sock_id = socket.get_sock_id();
         table.insert(sock_id, socket);
-
         drop(table); // ロック解除
+
+        // 接続が確立されるまで待つ
         self.wait_event(sock_id, TCPEventKind::ConnectionCompleted);
 
         Ok(sock_id)
@@ -324,6 +326,26 @@ impl TCP {
             .connected_connection_queue
             .pop_front()
             .context("no connected socket.")?)
+    }
+
+    pub fn send(&self, sock_id: SockID, buffer: &[u8]) -> Result<()> {
+        let mut cursor = 0;
+        while cursor < buffer.len() {
+            let mut table = self.sockets.write().unwrap();
+            let mut socket = table
+                .get_mut(&sock_id)
+                .context(format!("no such socket: {:?}", sock_id))?;
+            let send_size = cmp::min(MSS, buffer.len() - cursor);
+            socket.send_tcp_packet(
+                socket.send_param.next,
+                socket.recv_param.next,
+                tcpflags::ACK,
+                &buffer[cursor..cursor + send_size],
+            )?;
+            cursor += send_size;
+            socket.send_param.next += send_size as u32;
+        }
+        Ok(())
     }
 }
 
