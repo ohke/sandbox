@@ -23,10 +23,11 @@ pub struct Socket {
     pub send_param: SendParam,
     pub recv_param: RecvParam,
     pub status: TcpStatus,
-    pub sender: TransportSender,
+    pub recv_buffer: Vec<u8>,
     pub retransmission_queue: VecDeque<RetransmissionQueueEntry>, // 再送用のキュー
     pub connected_connection_queue: VecDeque<SockID>, // 接続済みソケットを保持。リスニングソケットのみアクセス。
     pub listening_socket: Option<SockID>, // 生成元のリスニングソケット。接続済みソケットのみアクセス。
+    pub sender: TransportSender,
 }
 
 #[derive(Clone, Debug)]
@@ -105,10 +106,11 @@ impl Socket {
                 tail: 0,
             },
             status,
-            sender,
+            recv_buffer: vec![0; SOCKET_BUFFER_SIZE],
             retransmission_queue: VecDeque::new(),
             connected_connection_queue: VecDeque::new(),
             listening_socket: None,
+            sender,
         })
     }
 

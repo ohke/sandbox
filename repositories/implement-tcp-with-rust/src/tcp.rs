@@ -79,7 +79,7 @@ impl TCP {
 
                         socket
                             .sender
-                            .send_to(item.packet.clone(), IpAddr::V4((socket.remote_addr)))
+                            .send_to(item.packet.clone(), IpAddr::V4(socket.remote_addr))
                             .context("failed to retransmit")
                             .unwrap();
                         item.transmission_count += 1;
@@ -317,6 +317,43 @@ impl TCP {
             return Ok(());
         }
 
+        if !packet.payload().is_empty() {
+            self.process_payload(socket, &packet)?;
+        }
+
+        Ok(())
+    }
+
+    fn process_payload(&self, socket: &mut Socket, packet: &TCPPacket) -> Result<()> {
+        // パケットのペイロードを受信バッファにコピーする
+        let offset = socket.recv_buffer.len() - socket.recv_param.window as usize; // 受信バッファの上書き開始位置
+        let copy_size = cmp::min(packet.payload().len(), socket.recv_buffer.len() - offset);
+        socket.recv_buffer[offset..offset + copy_size]
+            .copy_from_slice(&packet.payload()[..copy_size]);
+        socket.recv_param.tail =
+            cmp::max(socket.recv_param.tail, packet.get_seq() + copy_size as u32); // パケットロスの再送時に穴埋めするため
+
+        if packet.get_seq() == socket.recv_param.next {
+            // 順序入れ替わり無しの場合
+            socket.recv_param.next = socket.recv_param.tail;
+            socket.recv_param.window -= (socket.recv_param.tail - packet.get_seq()) as u16;
+        }
+
+        if copy_size > 0 {
+            // 受信バッファにコピー成功
+            socket.send_tcp_packet(
+                socket.send_param.next,
+                socket.recv_param.next,
+                tcpflags::ACK,
+                &[],
+            )?;
+        } else {
+            // 受信バッファが溢れたら、セグメントを破棄
+            dbg!("recv buffer overflow");
+        }
+
+        self.publish_event(socket.get_sock_id(), TCPEventKind::DataArrived);
+
         Ok(())
     }
 
@@ -468,6 +505,34 @@ impl TCP {
             thread::sleep(Duration::from_millis(1));
         }
         Ok(())
+    }
+
+    pub fn recv(&self, sock_id: SockID, buffer: &mut [u8]) -> Result<usize> {
+        // 受信データをbufferに読み込む
+        let mut table = self.sockets.write().unwrap();
+        let mut socket = table
+            .get_mut(&sock_id)
+            .context(format!("no such socket: {:?}", sock_id))?;
+        let mut received_size = socket.recv_buffer.len() - socket.recv_param.window as usize;
+        while received_size == 0 {
+            // ロックを外して受信イベントを待機
+            drop(table);
+            dbg!("waiting incomming data");
+            self.wait_event(sock_id, TCPEventKind::DataArrived);
+            table = self.sockets.write().unwrap();
+            socket = table
+                .get_mut(&sock_id)
+                .context(format!("no such socket: {:?}", sock_id))?;
+            received_size = socket.recv_buffer.len() - socket.recv_param.window as usize;
+        }
+
+        // recv_bufferの先頭からbufferにコピーする
+        let copy_size = cmp::min(buffer.len(), received_size);
+        buffer[..copy_size].copy_from_slice(&socket.recv_buffer[..copy_size]);
+        socket.recv_buffer.copy_within(copy_size.., 0);
+        socket.recv_param.window += copy_size as u16;
+
+        Ok(copy_size)
     }
 }
 
