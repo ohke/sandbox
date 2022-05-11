@@ -1,4 +1,5 @@
 mod q_6_1;
+mod q_6_2;
 
 #[cfg(test)]
 mod tests {
