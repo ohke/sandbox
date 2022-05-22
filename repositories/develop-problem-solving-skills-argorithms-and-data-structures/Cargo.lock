@@ -25,3 +25,7 @@ version = "0.1.0"
 [[package]]
 name = "chap8"
 version = "0.1.0"
+
+[[package]]
+name = "chap9"
+version = "0.1.0"
