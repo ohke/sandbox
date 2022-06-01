@@ -12,7 +12,6 @@ fn bfs_bipartite(n: usize, graph: &Vec<Vec<usize>>) -> bool {
 
     queue.push_back((0, Color::White));
 
-    
     while let Some(this) = queue.pop_front() {
         for neighbor in graph[this.0].iter().cloned() {
             let neighbor_color = match this.1 {

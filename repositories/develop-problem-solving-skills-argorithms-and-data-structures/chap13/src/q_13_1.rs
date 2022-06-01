@@ -18,7 +18,7 @@ fn solve(n: usize, e: Vec<(usize, usize)>) -> usize {
         graph[e_i.0].push(e_i.1);
         graph[e_i.1].push(e_i.0);
     }
-    
+
     let mut seen = vec![false; n];
 
     for i in 0..n {
