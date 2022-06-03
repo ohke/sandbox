@@ -10,7 +10,7 @@ fn bfs_shortest(n: usize, graph: &Vec<Vec<usize>>, s: usize, g: usize) -> usize 
         }
 
         cost[v] = Some(c);
-        
+
         for neighbor in graph[v].iter().cloned() {
             queue.push_back((neighbor, c + 1));
         }
@@ -38,7 +38,24 @@ mod tests {
     // oos 567
     #[test]
     fn test_1() {
-        assert_eq!(solve(8, vec![(0, 1), (0, 3), (1, 2), (2, 4), (3, 5), (4, 7), (5, 6), (6, 7)], 7, 3), 3);
+        assert_eq!(
+            solve(
+                8,
+                vec![
+                    (0, 1),
+                    (0, 3),
+                    (1, 2),
+                    (2, 4),
+                    (3, 5),
+                    (4, 7),
+                    (5, 6),
+                    (6, 7)
+                ],
+                7,
+                3
+            ),
+            3
+        );
     }
 
     // ooo 012
@@ -46,6 +63,23 @@ mod tests {
     // ooo 567
     #[test]
     fn test_2() {
-        assert_eq!(solve(8, vec![(0, 1), (0, 3), (1, 2), (2, 4), (3, 5), (4, 7), (5, 6), (6, 7)], 4, 3), 4);
+        assert_eq!(
+            solve(
+                8,
+                vec![
+                    (0, 1),
+                    (0, 3),
+                    (1, 2),
+                    (2, 4),
+                    (3, 5),
+                    (4, 7),
+                    (5, 6),
+                    (6, 7)
+                ],
+                4,
+                3
+            ),
+            4
+        );
     }
 }
