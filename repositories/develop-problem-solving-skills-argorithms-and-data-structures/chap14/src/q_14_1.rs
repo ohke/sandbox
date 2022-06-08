@@ -14,7 +14,7 @@ fn rec(graph: &Vec<HashSet<usize>>, dp: &mut Vec<Option<usize>>, v: usize) -> us
     }
 
     dp[v] = Some(d);
-    
+
     d
 }
 
