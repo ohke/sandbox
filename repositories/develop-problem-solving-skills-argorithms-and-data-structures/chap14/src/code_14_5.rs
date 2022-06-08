@@ -6,6 +6,7 @@ fn floyd_warshall(n: usize, e: Vec<(usize, usize, i64)>) -> Vec<Vec<Option<i64>>
         graph[e_i.0].insert(e_i.1, e_i.2);
     }
 
+    // dp更新の加算でオーバーフローを起こしうるので、i32::MAXを上限としておく
     let mut dp = vec![vec![Option::None; n]; n];
     for i in 0..n {
         for j in 0..n {
