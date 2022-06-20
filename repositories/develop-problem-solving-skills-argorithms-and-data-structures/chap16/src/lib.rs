@@ -1,6 +1,7 @@
 mod code_16_1;
 mod edge_connectivity;
 mod q_16_1;
+mod q_16_2;
 
 #[cfg(test)]
 mod tests {
