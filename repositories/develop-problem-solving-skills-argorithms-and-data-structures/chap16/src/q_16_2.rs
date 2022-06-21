@@ -1,6 +1,33 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+fn floyd_warshall(n: usize, graph: &Vec<HashMap<usize, (usize, usize)>>) -> Vec<Vec<usize>> {
+    let mut dp = vec![vec![usize::MAX; n]; n];
+
+    for i in 0..n {
+        for j in 0..n {
+            if i == j {
+                dp[i][j] = 0;
+            } else if let Some(e_i) = graph[i].get(&j) {
+                dp[i][j] = e_i.0;
+            }
+        }
+    }
+
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if i == j || dp[i][k] == usize::MAX || dp[k][j] == usize::MAX {
+                    continue;
+                }
+                dp[i][j] = dp[i][j].min(dp[i][k] + dp[k][j]);
+            }
+        }
+    }
+
+    dp
+}
+
 fn dfs(
     graph: &Vec<HashMap<usize, usize>>,
     seen: &mut HashSet<usize>,
@@ -33,75 +60,67 @@ fn dfs(
     None
 }
 
-fn floyd_warshall(n: usize, graph: &Vec<HashMap<usize, usize>>) -> Vec<Vec<usize>> {
-    let mut dp = vec![vec![usize::MAX; n]; n];
+fn ford_fulkerson(graph: &mut Vec<HashMap<usize, usize>>, s: usize, t: usize) -> usize {
+    let mut ret = 0;
 
-    for i in 0..n {
-        for j in 0..n {
-            if i == j {
-                dp[i][j] = 0;
-            } else if let Some(e_i) = graph[i].get(&j) {
-                dp[i][j] = *e_i;
+    loop {
+        let mut seen = HashSet::new();
+
+        if let Some((path, flow)) = dfs(&graph, &mut seen, s, t) {
+            for e_i in path.into_iter() {
+                let c = graph[e_i.0].get(&e_i.1).unwrap().clone();
+                graph[e_i.0].insert(e_i.1, c - flow);
+
+                // 残余グラフ更新
+                let c = graph[e_i.1].get(&e_i.0).unwrap().clone();
+                graph[e_i.1].insert(e_i.0, c + flow);
             }
+
+            ret += flow;
+        } else {
+            break;
         }
     }
 
-    for k in 0..n {
-        for i in 0..n {
-            for j in 0..n {
-                if i == j || dp[i][k] == usize::MAX || dp[k][j] == usize::MAX {
-                    continue;
-                }
-                dp[i][j] = dp[i][j].min(dp[i][k] + dp[k][j]);
-            }
-        }
-    }
-
-    dp
+    ret
 }
 
 fn solve(n: usize, e: Vec<(usize, usize, usize, usize)>, s: usize, t: usize) -> usize {
-    let mut graph: Vec<HashMap<usize, usize>> = vec![HashMap::new(); n];
+    // 有向グラフの作成
+    let mut graph = vec![HashMap::new(); n];
     for e_i in e.iter() {
-        graph[e_i.0].insert(e_i.1, e_i.2);
+        graph[e_i.0].insert(e_i.1, (e_i.2, e_i.3));
     }
 
-    let mut dp = floyd_warshall(n, &graph);
+    // 全頂点間最短路の計算
+    let dp = floyd_warshall(n, &graph);
 
-    // TODO: フォードファルカーソンの実装
-    // let mut flow_graph: Vec<HashMap<usize, usize>> = vec![HashMap::new(); n];
-    // for i in 0..n {
-    //     for j in 0..n {
-    //         if i == j {
-    //             continue;
-    //         }
+    // 残余グラフの作成
+    let mut flow_graph: Vec<HashMap<usize, usize>> = vec![HashMap::new(); n];
+    for i in 0..n {
+        if dp[s][i] == usize::MAX {
+            continue;
+        }
 
-    //         if let Some(graph[i])
+        for j in 0..n {
+            if i == j
+                || dp[i][j] == usize::MAX
+                || dp[j][t] == usize::MAX
+                || !graph[i].contains_key(&j)
+            {
+                continue;
+            }
 
-    //         flow_graph[e_i.0].insert(e_i.1, e_i.3);
-    //         flow_graph[e_i.1].insert(e_i.0, 0);
-    //     }
-    // }
+            // s-t間の最短路に含まれる頂点
+            if dp[s][i] + dp[i][j] + dp[j][t] == dp[s][t] {
+                flow_graph[i].insert(j, graph[i].get(&j).unwrap().1);
+                flow_graph[j].insert(i, 0);
+            }
+        }
+    }
 
-    let mut ret = 0;
-    // loop {
-    //     let mut seen = HashSet::new();
-
-    //     if let Some((path, flow)) = dfs(&graph, &mut seen, s, t) {
-    //         for e_i in path.into_iter() {
-    //             let c = graph[e_i.0].get(&e_i.1).unwrap().clone();
-    //             graph[e_i.0].insert(e_i.1, c - flow);
-
-    //             // 残余グラフ更新
-    //             let c = graph[e_i.1].get(&e_i.0).unwrap().clone();
-    //             graph[e_i.1].insert(e_i.0, c + flow);
-    //         }
-
-    //         ret += flow;
-    //     } else {
-    //         break;
-    //     }
-    // }
+    // 最大フロー問題として解く
+    let ret = ford_fulkerson(&mut flow_graph, s, t);
 
     ret
 }
@@ -113,16 +132,7 @@ mod tests {
     #[test]
     fn test_1() {
         assert_eq!(
-            solve(
-                3,
-                vec![
-                    (0, 1, 1, 1),
-                    (1, 2, 1, 1),
-                    (0, 2, 1, 1),
-                ]
-                0,
-                2,
-            ),
+            solve(3, vec![(0, 1, 1, 1), (1, 2, 1, 1), (0, 2, 1, 1),], 0, 2,),
             1
         )
     }
