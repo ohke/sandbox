@@ -37,5 +37,4 @@ fn main() {
 
         println!("{}", ret);
     }
-    
 }
