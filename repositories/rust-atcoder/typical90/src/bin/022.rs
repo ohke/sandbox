@@ -23,7 +23,7 @@ fn main() {
 
     let r = gcd(a, gcd(b, c));
 
-    let ret = (a/r - 1) + (b/r - 1) + (c/r - 1);
+    let ret = (a / r - 1) + (b / r - 1) + (c / r - 1);
 
     println!("{}", ret);
 }
