@@ -24,6 +24,16 @@ cases:
       53
     out: |
       0
+  - name: sample5
+    in: |
+      2
+    out: |
+      0
+  - name: sample6
+    in: |
+      32
+    out: |
+      3
 
 extend:
   - type: Text
