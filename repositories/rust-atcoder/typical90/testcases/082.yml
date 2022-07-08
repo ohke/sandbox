@@ -24,6 +24,16 @@ cases:
       381453331666495446 746254773042091083
     out: |
       584127830
+  - name: sample5
+    in: |
+      1 1
+    out: |
+      1
+  - name: sample6
+    in: |
+      1 2
+    out: |
+      2
 
 extend:
   - type: Text
