@@ -16,7 +16,7 @@ fn modpow(a: usize, b: usize, m: usize) -> usize {
 }
 
 fn div(a: usize, b: usize, m: usize) -> usize {
-    (a * modpow(b, m-2, m)) % m
+    (a * modpow(b, m - 2, m)) % m
 }
 
 fn f(x: usize, m: usize) -> usize {
@@ -37,7 +37,7 @@ fn main() {
 
     let mut ret = 0;
     for i in 1..19 {
-        let left = l.max(10_usize.pow((i-1) as u32));
+        let left = l.max(10_usize.pow((i - 1) as u32));
         let right = r.min(10_usize.pow(i as u32) - 1);
         if left > right {
             continue;
