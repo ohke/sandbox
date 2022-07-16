@@ -1,38 +1,25 @@
-use core::panic;
-
 fn main() {
     proconio::input! {
         x: i128,
-        a: i128,
-        d: i128,
+        mut a: i128,
+        mut d: i128,
         n: i128,
     }
 
-    let ret = if (d == 0) || (x <= a && d >= 0) || (x >= a && d <= 0) {
-        (x - a).abs()
-    } else if ((x >= a + d * (n - 1)) && d > 0) || ((x <= a + d * (n - 1)) && d < 0) {
-        (x - (a + d * (n - 1))).abs()
-    } else if d > 0 {
-        let l = (x - a) / d;
-        let d_l = x - (a + d * l);
+    if d < 0 {
+        a = d * (n - 1) + a;
+        d = -d;
+    }
 
-        let r = (x - a) / d + 1;
-        let d_r = (a + d * r) - x;
+    let z = a + d * (n - 1);
 
-        d_l.min(d_r)
-    } else if d < 0 {
-        let l = ((a - x) / d).abs();
-        let d_l = (a + d * l) - x;
-        println!("l: {}, d_l: {}", l, d_l);
-
-        let r = ((a - x) / (d - 1)).abs();
-        let d_r = x - (a + d * r);
-        println!("r: {}, d_r: {}", r, d_r);
-
-        d_l.min(d_r)
+    if x <= a {
+        println!("{}", (x - a).abs());
+    } else if x >= z {
+        println!("{}", (x - z).abs());
     } else {
-        panic!();
-    };
-
-    println!("{}", ret);
+        let l = a + ((x - a) / d) * d;
+        let r = a + ((x - a) / d + 1) * d;
+        println!("{}", (x - l).abs().min((x - r).abs()));
+    }
 }
