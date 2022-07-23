@@ -4,32 +4,35 @@ fn main() {
     input! {
         n: usize,
         m: usize,
-        mut x: [usize; n],
+        mut x: [i64; n],
     }
+    x.insert(0, 0);
 
+    let mut b = vec![0; n+1];
     for _ in 0..m {
         input! {
             c: usize,
-            y: usize,
+            y: i64,
         }
-        x[c - 1] += y;
+        b[c] = y;
     }
 
-    let mut g = Vec::new();
-    for i in 0..n {
-        let mut g_i = if i == 0 { x[i] } else { g[i - 1] + x[i] };
+    let mut dp = vec![vec![-1_i64; n+1]; n+1];
 
-        g_i *= (n + 1) / (i + 2);
+    // 初期値
+    dp[0][0] = 0;
 
-        g.push(g_i);
-    }
+    // 更新
+    for i in 1..(n+1) {
+        // i回目が裏
+        dp[i][0] = dp[i-1].iter().max().unwrap().clone();
 
-    let mut max_i = 0;
-    let mut max_v = 0;
-    for i in 0..n {
-        if g[i] > max_v {
-            max_v = g[i];
-            max_i = i;
+        // i回目が表
+        for j in 1..(i+1) {
+            dp[i][j] = dp[i-1][j-1] + x[i] + b[j];
         }
     }
+
+    let result = dp[n].iter().max().unwrap().clone();
+    println!("{}", result);
 }
