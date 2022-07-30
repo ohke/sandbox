@@ -13,8 +13,8 @@ fn main() {
     dp[0] = 0;
 
     // 更新
-    for i in 0..(n-1) {
-        for j in 1..(k+1) {
+    for i in 0..(n - 1) {
+        for j in 1..(k + 1) {
             if i + j >= n {
                 break;
             }
@@ -23,6 +23,6 @@ fn main() {
         }
     }
 
-    let result = dp[n-1];
+    let result = dp[n - 1];
     println!("{}", result);
 }

@@ -14,10 +14,10 @@ fn main() {
 
     // 更新
     for i in 2..n {
-        dp[i] = ((h[i] - h[i-1]).abs() + dp[i-1]).min((h[i] - h[i-2]).abs() + dp[i-2]);
+        dp[i] = ((h[i] - h[i - 1]).abs() + dp[i - 1]).min((h[i] - h[i - 2]).abs() + dp[i - 2]);
     }
 
-    let result = dp[n-1];
-    
+    let result = dp[n - 1];
+
     println!("{}", result);
 }
